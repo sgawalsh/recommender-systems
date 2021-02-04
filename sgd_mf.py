@@ -7,9 +7,13 @@ import data
 import pickle
 
 class sgdMF():
-    def __init__(self, ratings, n_factors = 100, user_vec_reg = 0, item_vec_reg = 0, user_bias_reg = 0, item_bias_reg = 0, lr = .01, training_split = .9, populate_bias = True, set_seed = True):
+    
+    def __init__(self, ratings, n_factors = 100, user_vec_reg = 0, item_vec_reg = 0, user_bias_reg = 0, item_bias_reg = 0, lr = .01, training_split = .9, populate_bias = True, set_seed = True, scaling = 'z'):
         self.train_vals = ratings[~np.isnan(ratings)]
-        self.ratings = (ratings - self.train_vals.mean()) / self.train_vals.std() # scale and center data
+        if scaling == 'z': # z normalization
+            self.ratings = (ratings - self.train_vals.mean()) / self.train_vals.std() # scale and center data
+        elif scaling == 'mm': # minmax normalization
+            self.ratings = (ratings - self.train_vals.min()) / (self.train_vals.max() - self.train_vals.min())
         self.n_factors = n_factors
         self.n_users, self.n_items = ratings.shape
         self.set_seed = set_seed
@@ -28,7 +32,7 @@ class sgdMF():
         self.bias_init(populate_bias)
         self.min_error = np.inf
 
-    def gen_datasets(self, training_split):
+    def gen_datasets(self, training_split): # split into training and test datasets if desired
         dataset = np.column_stack(np.nan_to_num(self.ratings).nonzero())
         
         if training_split >= 1:
@@ -39,7 +43,7 @@ class sgdMF():
             np.random.shuffle(dataset)
             self.train_data, self.test_data = np.split(dataset, [floor(len(dataset) * training_split)])
 
-    def bias_init(self, populate = True):
+    def bias_init(self, populate = True): # initialize user and item bias terms
         #self.global_bias = np.sum(self.train_data) / np.count_nonzero(~np.isnan(self.ratings)) #not needed for centered input data
         self.user_bias = np.zeros(self.n_users)
         self.item_bias = np.zeros(self.n_items)
@@ -66,8 +70,6 @@ class sgdMF():
             
             self.update_sgd(err, coord[0], coord[1])
         
-        
-            
             if test_counter >= test_period:
                 train_mae = mae_sum / test_period
                 train_rmse = sqrt(mse_sum / test_period)
@@ -75,7 +77,7 @@ class sgdMF():
                 self.train_rmse.append(train_rmse)
                 mae_sum, mse_sum, test_counter = 0, 0, 0
                 test_mae, test_rmse = self.test()
-                print("{0}/{1} - Train MAE: {2}, Train MSE: {3}, Test MAE: {4}, Test MSE: {5}".format(i + 1, len(self.train_data), round(train_mae, 3), round(train_rmse, 3), round(test_mae, 3), round(test_rmse, 3)))
+                print("{0}/{1} - Train MAE: {2}, Train RMSE: {3}, Test MAE: {4}, Test RMSE: {5}".format(i + 1, len(self.train_data), round(train_mae, 3), round(train_rmse, 3), round(test_mae, 3), round(test_rmse, 3)))
                 if test_rmse < self.min_error:
                     self.min_error = test_rmse
                     self.best_user_matrix = np.copy(self.user_matrix)
@@ -83,8 +85,7 @@ class sgdMF():
                     self.best_user_bias = np.copy(self.user_bias)
                     self.best_item_bias = np.copy(self.item_bias)
                     
-            
-    def update_sgd(self, err, u_id, i_id):
+    def update_sgd(self, err, u_id, i_id): # adjust vector values according to error direction and magnitude, apply regularization if used
         self.user_bias[u_id] += self.lr * (err - self.user_bias_reg * self.user_bias[u_id])
         self.item_bias[i_id] += self.lr * (err - self.item_bias_reg * self.item_bias[i_id])
         
@@ -110,7 +111,6 @@ class sgdMF():
         self.test_mae.append(test_mae)
         self.test_rmse.append(test_rmse)
         return test_mae, test_rmse
-        
         
     def plot_error(self):
         plt.figure()
@@ -139,23 +139,10 @@ class sgdMF():
         pred_list = pred_list[pred_list[:,1].argsort()]
         return np.flipud(pred_list)
         
-    def get_final_avg_error(self):
-        return self.test_rmse[-1]
-         
-        
-# hyperParameterList = { # set hyperparameter combinations
-#             "Factors": [5, 10, 50],
-#             "Learning Rate": [.01, .001],
-#             "Populate Bias": [True, False],
-#             "Bias Regs": [0, .01, .1],
-#             "Vector Regs": [0, .01, .1],
-#             "Epochs": [1, 3],
-#             }
-
 def test_params():
     ratings = data.get_data("ml-latest-small/ratings.csv")
     hyperParameterList = { # set hyperparameter combinations
-                "Factors": [10, 50, 200],
+                "Factors": [100],
                 "Learning Rate": [.01, .001],
                 "Populate Bias": [True],
                 "Bias Regs": [.1, .2, .5],
@@ -189,7 +176,7 @@ def test_params():
     
 
 
-def load_predictions(u_id = 1, n = 10, verbose = True):
+def get_predictions(u_id = 1, n = 10, verbose = True):
     ratings = data.get_data("ml-latest-small/ratings.csv")
     my_sgdMF = sgdMF(ratings.to_numpy())
     recs = my_sgdMF.get_user_recs(u_id)
@@ -206,10 +193,10 @@ def load_predictions(u_id = 1, n = 10, verbose = True):
     return recs
 
 #test_params()
-#load_predictions(10, 0)
+#get_predictions(10, 0)
     
-    
-# my_sgdMF = sgdMF(ratings.to_numpy(), 20, lr = .001, populate_bias = False, user_bias_reg = 0, item_bias_reg = 0)
+# ratings = data.get_data("ml-latest-small/ratings.csv")
+# my_sgdMF = sgdMF(ratings.to_numpy(), 20, lr = .001, populate_bias = False, user_bias_reg = 0, item_bias_reg = 0, scaling = 'z')
 # for i in range(3):
 #     my_sgdMF.train()
 # my_sgdMF.plot_error()

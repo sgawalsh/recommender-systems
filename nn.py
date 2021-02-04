@@ -182,9 +182,9 @@ def train_model(norm = 'mm'):
                 preds = net(x_b_t[:, 0], x_b_t[:, 1])
                 loss = criterion(preds, y_b_t)
                 if training:
-                    scheduler.step()
                     loss.backward()
                     optimizer.step()
+                    scheduler.step()
                     lr_history.extend(scheduler.get_lr())
                 
                         
@@ -208,7 +208,6 @@ def train_model(norm = 'mm'):
             break
         
     net.load_state_dict(best_weights)
-    preds = net(torch.empty(n_items, dtype = torch.long).fill_(1).to(device), torch.arange(n_items).to(device))
         
     torch.save(best_weights, "models/best_weights.pt")
     pickle.dump(net.user_embeds, open("models/user_embeds", "wb"))
@@ -247,6 +246,6 @@ def get_predictions(u_id = 1, n = 10, verbose = True):
     return recs
     
         
-#train_model('mm')
+train_model('z')
 #get_predictions(10, 0)
     
